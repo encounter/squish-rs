@@ -210,7 +210,7 @@ impl Into<Algorithm> for Profile {
 
 fn format_to_dxgiformat(f: Format) -> DxgiFormat {
     match f {
-        Format::Bc1 => DxgiFormat::BC1_UNorm_sRGB,
+        Format::Bc1 | Format::Bc1Gcn => DxgiFormat::BC1_UNorm_sRGB,
         Format::Bc2 => DxgiFormat::BC2_UNorm_sRGB,
         Format::Bc3 => DxgiFormat::BC3_UNorm_sRGB,
     }
@@ -237,6 +237,7 @@ fn d3dformat_to_format(d: D3DFormat) -> Format {
 fn parse_format(s: &str) -> Result<Format, &'static str> {
     match s.to_lowercase().as_ref() {
         "bc1" => Ok(Format::Bc1),
+        "bc1gcn" => Ok(Format::Bc1Gcn),
         "bc2" => Ok(Format::Bc2),
         "bc3" => Ok(Format::Bc3),
         _ => Err("invalid compression format specifier")

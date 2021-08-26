@@ -108,7 +108,7 @@ impl<'a> SingleColourFit<'a> {
 
 impl<'a> ColourFitImpl<'a> for SingleColourFit<'a> {
     fn is_bc1(&self) -> bool {
-        self.format == Format::Bc1
+        self.format == Format::Bc1 || self.format == Format::Bc1Gcn
     }
 
     fn is_transparent(&self) -> bool {
@@ -134,7 +134,7 @@ impl<'a> ColourFitImpl<'a> for SingleColourFit<'a> {
                 .remap_indices(&[self.index; 16], &mut indices);
 
             // build the compressed blob
-            colourblock::write3(&self.start, &self.end, &indices, &mut self.best_compressed);
+            colourblock::write3(&self.start, &self.end, &indices, &mut self.best_compressed, self.format);
 
             // save the error
             self.best_error = self.error;
@@ -156,7 +156,7 @@ impl<'a> ColourFitImpl<'a> for SingleColourFit<'a> {
                 .remap_indices(&[self.index; 16], &mut indices);
 
             // build the compressed blob
-            colourblock::write4(&self.start, &self.end, &indices, &mut self.best_compressed);
+            colourblock::write4(&self.start, &self.end, &indices, &mut self.best_compressed, self.format);
 
             // save the error
             self.best_error = self.error;

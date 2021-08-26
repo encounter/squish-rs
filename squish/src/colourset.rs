@@ -33,6 +33,7 @@ pub struct ColourSet {
 
 impl ColourSet {
     pub fn new(rgba: &[[u8; 4]; 16], mask: u32, format: Format, alpha_weighted: bool) -> ColourSet {
+        let is_bc1 = format == Format::Bc1 || format == Format::Bc1Gcn;
         let mut set = ColourSet {
             count: 0,
             points: [Vec3::new(0f32, 0f32, 0f32); 16],
@@ -51,7 +52,7 @@ impl ColourSet {
             }
 
             // DXT uses binary alpha
-            if (format == Format::Bc1) && (rgba[i][3] < 128u8) {
+            if (is_bc1) && (rgba[i][3] < 128u8) {
                 set.remap[i] = -1;
                 set.transparent = true;
                 continue;
@@ -85,7 +86,7 @@ impl ColourSet {
                     && (rgba[i][0] == rgba[j][0])
                     && (rgba[i][1] == rgba[j][1])
                     && (rgba[i][2] == rgba[j][2])
-                    && (format != Format::Bc1 || rgba[j][3] >= 128u8);
+                    && (!is_bc1 || rgba[j][3] >= 128u8);
                 if duplicate {
                     // get index of duplicate
                     let index = set.remap[j];

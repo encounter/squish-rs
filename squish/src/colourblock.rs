@@ -22,6 +22,7 @@
 
 use core::{mem, u8};
 
+use crate::Format;
 use crate::math::{f32_to_i32_clamped, Vec3};
 
 /// Convert a colour value to a little endian u16
@@ -33,26 +34,40 @@ fn pack_565(colour: &Vec3) -> u16 {
     (r << 11) | (g << 5) | b
 }
 
-fn write_block(a: u16, b: u16, indices: &[u8; 16], block: &mut [u8]) {
+fn write_block(a: u16, b: u16, indices: &[u8; 16], block: &mut [u8], format: Format) {
     // write endpoints
-    let a = a.to_le_bytes();
-    block[0..2].copy_from_slice(&a[..]);
-    let b = b.to_le_bytes();
-    block[2..4].copy_from_slice(&b[..]);
+    if format == Format::Bc1Gcn {
+        let a = a.to_be_bytes();
+        block[0..2].copy_from_slice(&a[..]);
+        let b = b.to_be_bytes();
+        block[2..4].copy_from_slice(&b[..]);
+    } else {
+        let a = a.to_le_bytes();
+        block[0..2].copy_from_slice(&a[..]);
+        let b = b.to_le_bytes();
+        block[2..4].copy_from_slice(&b[..]);
+    }
 
     // write 2-bit LUT indices
     let mut packed = [0u8; 4];
     for i in 0..packed.len() {
-        packed[i] = ((indices[4 * i + 3] & 0x03) << 6)
-            | ((indices[4 * i + 2] & 0x03) << 4)
-            | ((indices[4 * i + 1] & 0x03) << 2)
-            | (indices[4 * i] & 0x03);
+        if format == Format::Bc1Gcn {
+            packed[i] = ((indices[4 * i] & 0x03) << 6)
+                | ((indices[4 * i + 1] & 0x03) << 4)
+                | ((indices[4 * i + 2] & 0x03) << 2)
+                | (indices[4 * i + 3] & 0x03);
+        } else {
+            packed[i] = ((indices[4 * i + 3] & 0x03) << 6)
+                | ((indices[4 * i + 2] & 0x03) << 4)
+                | ((indices[4 * i + 1] & 0x03) << 2)
+                | (indices[4 * i] & 0x03);
+        }
     }
 
     block[4..].copy_from_slice(&packed);
 }
 
-pub fn write3(start: &Vec3, end: &Vec3, indices: &[u8; 16], block: &mut [u8]) {
+pub fn write3(start: &Vec3, end: &Vec3, indices: &[u8; 16], block: &mut [u8], format: Format) {
     let mut a = pack_565(start);
     let mut b = pack_565(end);
 
@@ -70,10 +85,10 @@ pub fn write3(start: &Vec3, end: &Vec3, indices: &[u8; 16], block: &mut [u8]) {
         }
     }
 
-    write_block(a, b, &remapped, block);
+    write_block(a, b, &remapped, block, format);
 }
 
-pub fn write4(start: &Vec3, end: &Vec3, indices: &[u8; 16], block: &mut [u8]) {
+pub fn write4(start: &Vec3, end: &Vec3, indices: &[u8; 16], block: &mut [u8], format: Format) {
     let mut a = pack_565(start);
     let mut b = pack_565(end);
 
@@ -90,16 +105,20 @@ pub fn write4(start: &Vec3, end: &Vec3, indices: &[u8; 16], block: &mut [u8]) {
     }
     // if a == b, use index 0 for everything, i.e. no need to do anything
 
-    write_block(a, b, &remapped, block);
+    write_block(a, b, &remapped, block, format);
 }
 
 /// Convert a little endian 565-packed colour to 8bpc RGBA
-fn unpack_565(packed: &[u8]) -> [u8; 4] {
+fn unpack_565(packed: &[u8], format: Format) -> [u8; 4] {
     assert!(packed.len() == 2);
     // get components
     let mut tmp = [0u8; 2];
     tmp.copy_from_slice(&packed[0..2]);
-    let value: u16 = u16::from_le_bytes(tmp);
+    let value: u16 = if format == Format::Bc1Gcn {
+        u16::from_be_bytes(tmp)
+    } else {
+        u16::from_le_bytes(tmp)
+    };
     let r = ((value >> 11) & 0x1F) as u8;
     let g = ((value >> 5) & 0x3F) as u8;
     let b = (value & 0x1F) as u8;
@@ -113,9 +132,11 @@ fn unpack_565(packed: &[u8]) -> [u8; 4] {
 }
 
 /// Decompress a BC1/2/3 block to 4x4 RGBA pixels
-pub fn decompress(bytes: &[u8], is_bc1: bool) -> [[u8; 4]; 16] {
+pub fn decompress(bytes: &[u8], format: Format) -> [[u8; 4]; 16] {
     assert!(bytes.len() == 8);
 
+    let is_gcn = format == Format::Bc1Gcn;
+    let is_bc1 = format == Format::Bc1 || is_gcn;
     let mut codes = [0u8; 16];
 
     // unpack endpoints
@@ -124,8 +145,8 @@ pub fn decompress(bytes: &[u8], is_bc1: bool) -> [[u8; 4]; 16] {
     let a = u16::from_le_bytes(tmp);
     tmp.copy_from_slice(&bytes[2..4]);
     let b = u16::from_le_bytes(tmp);
-    codes[0..4].copy_from_slice(&unpack_565(&bytes[0..2]));
-    codes[4..8].copy_from_slice(&unpack_565(&bytes[2..4]));
+    codes[0..4].copy_from_slice(&unpack_565(&bytes[0..2], format));
+    codes[4..8].copy_from_slice(&unpack_565(&bytes[2..4], format));
 
     // generate intermediate values
     for i in 0..4 {
@@ -134,7 +155,14 @@ pub fn decompress(bytes: &[u8], is_bc1: bool) -> [[u8; 4]; 16] {
 
         if is_bc1 && (a <= b) {
             codes[8 + i] = ((c + d) / 2) as u8;
-            codes[12 + i] = 0;
+            if is_gcn {
+                codes[12 + i] = codes[8 + i];
+            } else {
+                codes[12 + i] = 0;
+            }
+        } else if is_gcn {
+            codes[8 + i] = ((c * 5 + d * 3) >> 3) as u8;
+            codes[12 + i] = ((c * 3 + d * 5) >> 3) as u8;
         } else {
             codes[8 + i] = ((2 * c + d) / 3) as u8;
             codes[12 + i] = ((c + 2 * d) / 3) as u8;
@@ -151,10 +179,17 @@ pub fn decompress(bytes: &[u8], is_bc1: bool) -> [[u8; 4]; 16] {
         let ind = &mut indices[4 * i..4 * i + 4];
         let packed = bytes[4 + i];
 
-        ind[0] = packed & 0x03;
-        ind[1] = (packed >> 2) & 0x03;
-        ind[2] = (packed >> 4) & 0x03;
-        ind[3] = (packed >> 6) & 0x03;
+        if is_gcn {
+            ind[0] = (packed >> 6) & 0x03;
+            ind[1] = (packed >> 4) & 0x03;
+            ind[2] = (packed >> 2) & 0x03;
+            ind[3] = packed & 0x03;
+        } else {
+            ind[0] = packed & 0x03;
+            ind[1] = (packed >> 2) & 0x03;
+            ind[2] = (packed >> 4) & 0x03;
+            ind[3] = (packed >> 6) & 0x03;
+        }
     }
 
     let mut rgba = [[0u8; 4]; 16];

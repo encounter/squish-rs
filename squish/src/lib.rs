@@ -40,6 +40,10 @@ use rayon::prelude::*;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Format {
     Bc1,
+    /// CMPR format used on GameCube & Wii
+    /// Essentially standard BC1 with big-endian byte order
+    /// and small changes to color blocks
+    Bc1Gcn,
     Bc2,
     Bc3,
 }
@@ -148,7 +152,7 @@ impl Format {
     pub fn block_size(self) -> usize {
         // Compressed block size in bytes
         match self {
-            Format::Bc1 => 8,
+            Format::Bc1 | Format::Bc1Gcn => 8,
             Format::Bc2 => 16,
             Format::Bc3 => 16,
         }
@@ -219,7 +223,7 @@ impl Format {
         let colour_block = &block[colour_offset..colour_offset + 8];
 
         // decompress colour
-        let mut rgba = colourblock::decompress(colour_block, self == Format::Bc1);
+        let mut rgba = colourblock::decompress(colour_block, self);
 
         // decompress alpha separately if necessary
         if self == Format::Bc2 {
@@ -307,6 +311,18 @@ mod tests {
     #[test]
     fn test_storage_requirements_bc1_padded() {
         let estimate = Format::Bc1.compressed_size(15, 30);
+        assert_eq!(estimate, 256);
+    }
+
+    #[test]
+    fn test_storage_requirements_bc1_gcn_exact() {
+        let estimate = Format::Bc1Gcn.compressed_size(16, 32);
+        assert_eq!(estimate, 256);
+    }
+
+    #[test]
+    fn test_storage_requirements_bc1_gcn_padded() {
+        let estimate = Format::Bc1Gcn.compressed_size(15, 30);
         assert_eq!(estimate, 256);
     }
 

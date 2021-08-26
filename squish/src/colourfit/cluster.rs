@@ -23,10 +23,10 @@
 use core::cmp::Ordering;
 use core::f32;
 
+use crate::{ColourWeights, Format};
 use crate::colourblock;
 use crate::colourset::ColourSet;
 use crate::math::{Sym3x3, Vec3, Vec4};
-use crate::{ColourWeights, Format};
 
 use super::ColourFitImpl;
 
@@ -138,7 +138,7 @@ impl<'a> ClusterFit<'a> {
 
 impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
     fn is_bc1(&self) -> bool {
-        self.format == Format::Bc1
+        self.format == Format::Bc1 || self.format == Format::Bc1Gcn
     }
 
     fn is_transparent(&self) -> bool {
@@ -267,7 +267,7 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
             // generate the compressed blob
             let a = best_start.to_vec3();
             let b = best_end.to_vec3();
-            colourblock::write3(&a, &b, &best_indices, &mut self.best_compressed);
+            colourblock::write3(&a, &b, &best_indices, &mut self.best_compressed, self.format);
 
             // save the error
             self.best_error = best_error;
@@ -414,7 +414,7 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
             // generate the compressed blob
             let a = best_start.to_vec3();
             let b = best_end.to_vec3();
-            colourblock::write4(&a, &b, &best_indices, &mut self.best_compressed);
+            colourblock::write4(&a, &b, &best_indices, &mut self.best_compressed, self.format);
 
             // save the error
             self.best_error = best_error;

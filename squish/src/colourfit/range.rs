@@ -145,7 +145,7 @@ impl<'a> RangeFit<'a> {
 
 impl<'a> ColourFitImpl<'a> for RangeFit<'a> {
     fn is_bc1(&self) -> bool {
-        self.format == Format::Bc1
+        self.format == Format::Bc1 || self.format == Format::Bc1Gcn
     }
 
     fn is_transparent(&self) -> bool {
@@ -167,6 +167,7 @@ impl<'a> ColourFitImpl<'a> for RangeFit<'a> {
                 &self.end,
                 &self.indices,
                 &mut self.best_compressed,
+                self.format,
             );
         }
     }
@@ -187,6 +188,7 @@ impl<'a> ColourFitImpl<'a> for RangeFit<'a> {
                 &self.end,
                 &self.indices,
                 &mut self.best_compressed,
+                self.format,
             );
         }
     }
