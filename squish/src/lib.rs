@@ -1,5 +1,5 @@
 // Copyright (c) 2006 Simon Brown <si@sjbrown.co.uk>
-// Copyright (c) 2018-2019 Jan Solanti <jhs@psonet.com>
+// Copyright (c) 2018-2021 Jan Solanti <jhs@psonet.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -46,6 +46,8 @@ pub enum Format {
     Bc1Gcn,
     Bc2,
     Bc3,
+    Bc4,
+    Bc5,
 }
 
 /// Defines a compression algorithm
@@ -107,6 +109,16 @@ pub fn num_blocks(size: usize) -> usize {
     (size + 3) / 4
 }
 
+/// BCn formats are laid out in 8-byte blocks of the following types:
+/// * BC1: colour with optional 1-bit alpha
+/// * BC2: paletted alpha, colour
+/// * BC3: gradient alpha, colour
+/// * BC4: gradient alpha
+/// * BC5: gradient alpha, gradient alpha
+///
+/// BC4 and BC5 reuse the alpha compression scheme for arbitrary one- and two-channel images.
+/// Graphics APIs commonly refer to them as "grayscale", "luminance" or simply "red" for BC4 and
+/// "rg" or "luminance + alpha" for BC5 respectively.
 impl Format {
     /// Decompresses an image in memory
     ///
@@ -155,6 +167,8 @@ impl Format {
             Format::Bc1 | Format::Bc1Gcn => 8,
             Format::Bc2 => 16,
             Format::Bc3 => 16,
+            Format::Bc4 => 8,
+            Format::Bc5 => 16,
         }
     }
 
@@ -183,33 +197,44 @@ impl Format {
         params: Params,
         output: &mut [u8],
     ) {
-        // compress alpha separately if necessary
-        if self == Format::Bc2 {
-            alpha::compress_bc2(&rgba, mask, &mut output[..8]);
-        } else if self == Format::Bc3 {
-            alpha::compress_bc3(&rgba, mask, &mut output[..8]);
+        // compress alpha block(s)
+        match self {
+            Format::Bc1 => {},
+            Format::Bc2 => alpha::compress_bc2(&rgba, mask, &mut output[..8]),
+            Format::Bc3 => alpha::compress_bc3(&rgba, 3, mask, &mut output[..8]),
+            Format::Bc4 => alpha::compress_bc3(&rgba, 0, mask, &mut output[..8]),
+            Format::Bc5 => {
+                alpha::compress_bc3(&rgba, 0, mask, &mut output[0..8]);
+                alpha::compress_bc3(&rgba, 1, mask, &mut output[8..16]);
+            },
         }
 
-        // create the minimal point set
-        let colours = ColourSet::new(&rgba, mask, self, params.weigh_colour_by_alpha);
+        // compress colour block if the format has one
+        match self {
+            Format::Bc1 | Format::Bc2 | Format::Bc3 => {
+                // create the minimal point set
+                let colours = ColourSet::new(&rgba, mask, self, params.weigh_colour_by_alpha);
 
-        let colour_offset = if self == Format::Bc1 { 0 } else { 8 };
-        let colour_block = &mut output[colour_offset..colour_offset + 8];
+                let colour_offset = if self == Format::Bc1 { 0 } else { 8 };
+                let colour_block = &mut output[colour_offset..colour_offset + 8];
 
-        // compress with appropriate compression algorithm
-        if colours.count() == 1 {
-            // Single colour fit can't handle fully transparent blocks, hence the
-            // set has to contain at least 1 colour. It's also not very useful for
-            // anything more complex so we only use it for blocks of uniform colour.
-            let mut fit = SingleColourFit::new(&colours, self);
-            fit.compress(colour_block);
-        } else if (params.algorithm == Algorithm::RangeFit) || (colours.count() == 0) {
-            let mut fit = RangeFit::new(&colours, self, params.weights);
-            fit.compress(colour_block);
-        } else {
-            let iterate = params.algorithm == Algorithm::IterativeClusterFit;
-            let mut fit = ClusterFit::new(&colours, self, params.weights, iterate);
-            fit.compress(colour_block);
+                // compress with appropriate compression algorithm
+                if colours.count() == 1 {
+                    // Single colour fit can't handle fully transparent blocks, hence the
+                    // set has to contain at least 1 colour. It's also not very useful for
+                    // anything more complex so we only use it for blocks of uniform colour.
+                    let mut fit = SingleColourFit::new(&colours, self);
+                    fit.compress(colour_block);
+                } else if (params.algorithm == Algorithm::RangeFit) || (colours.count() == 0) {
+                    let mut fit = RangeFit::new(&colours, self, params.weights);
+                    fit.compress(colour_block);
+                } else {
+                    let iterate = params.algorithm == Algorithm::IterativeClusterFit;
+                    let mut fit = ClusterFit::new(&colours, self, params.weights, iterate);
+                    fit.compress(colour_block);
+                }
+            },
+            Format::Bc4 | Format::Bc5 => {},
         }
     }
 
@@ -218,18 +243,39 @@ impl Format {
     /// * `block`  - The compressed block of pixels
     /// * `output` - Storage for the decompressed block of pixels
     pub fn decompress_block(self, block: &[u8]) -> [[u8; 4]; 16] {
-        // get reference to the actual colour block
-        let colour_offset = if self == Format::Bc1 { 0 } else { 8 };
-        let colour_block = &block[colour_offset..colour_offset + 8];
+        let mut rgba;
+        // decompress colour block
+        match self {
+            Format::Bc1 | Format::Bc2 | Format::Bc3 => {
+                // get reference to the actual colour block
+                let colour_offset = if self == Format::Bc1 { 0 } else { 8 };
+                let colour_block = &block[colour_offset..colour_offset + 8];
 
-        // decompress colour
-        let mut rgba = colourblock::decompress(colour_block, self);
+                // decompress colour block
+                rgba = colourblock::decompress(colour_block, self);
+            },
+            _ => {
+                rgba = [[0, 0, 0, 0xFF]; 16];
+            },
+        }
 
-        // decompress alpha separately if necessary
-        if self == Format::Bc2 {
-            alpha::decompress_bc2(&mut rgba, &block[..8]);
-        } else if self == Format::Bc3 {
-            alpha::decompress_bc3(&mut rgba, &block[..8]);
+        // decompress alpha block(s)
+        match self {
+            Format::Bc1 => (),
+            Format::Bc2 => alpha::decompress_bc2(&mut rgba, &block[..8]),
+            Format::Bc3 => alpha::decompress_bc3(&mut rgba, 3, &block[..8]),
+            Format::Bc4 => {
+                alpha::decompress_bc3(&mut rgba, 0, &block[..8]);
+                // splat decompressed value into g and b channels
+                for ref mut pixel in rgba {
+                    pixel[1] = pixel[0];
+                    pixel[2] = pixel[0];
+                }
+            },
+            Format::Bc5 => {
+                alpha::decompress_bc3(&mut rgba, 0, &block[..8]);
+                alpha::decompress_bc3(&mut rgba, 1, &block[8..16]);
+            },
         }
 
         rgba
@@ -303,15 +349,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_storage_requirements_bc1_exact() {
-        let estimate = Format::Bc1.compressed_size(16, 32);
-        assert_eq!(estimate, 256);
+    fn test_storage_requirements() {
+        assert_eq!(Format::Bc1.compressed_size(16, 32), 256);
+        assert_eq!(Format::Bc1.compressed_size(15, 32), 256);
+        assert_eq!(Format::Bc2.compressed_size(16, 32), 512);
+        assert_eq!(Format::Bc2.compressed_size(15, 32), 512);
+        assert_eq!(Format::Bc3.compressed_size(16, 32), 512);
+        assert_eq!(Format::Bc3.compressed_size(15, 32), 512);
+        assert_eq!(Format::Bc4.compressed_size(16, 32), 256);
+        assert_eq!(Format::Bc4.compressed_size(15, 32), 256);
+        assert_eq!(Format::Bc5.compressed_size(16, 32), 512);
+        assert_eq!(Format::Bc5.compressed_size(15, 32), 512);
+    }
+
+    // The test-pattern is a gray-scale checkerboard of size 4x4 with 0xFF in the top-left.
+    // On top of that, the four middle pixels are set to 0x7F.
+    static DECODED_BLOCK_GRAY_4X4: &[u8] = &[
+        0xFF, 0x00, 0xFF, 0x00, // row 0
+        0x00, 0x7F, 0x7F, 0xFF, // row 1
+        0xFF, 0x7F, 0x7F, 0x00, // row 2
+        0x00, 0xFF, 0x00, 0xFF, // row 3
+    ];
+
+    fn decoded_block_gray_4x4_as_rgba() -> [u8; 4 * 4 * 4] {
+        let mut output = [0u8; 4 * 4 * 4];
+        for i in 0..DECODED_BLOCK_GRAY_4X4.len() {
+            output[i * 4 + 0] = DECODED_BLOCK_GRAY_4X4[i]; // R
+            output[i * 4 + 1] = DECODED_BLOCK_GRAY_4X4[i]; // G
+            output[i * 4 + 2] = DECODED_BLOCK_GRAY_4X4[i]; // B
+            output[i * 4 + 3] = 0xFF; //A
+        }
+        output
     }
 
     #[test]
-    fn test_storage_requirements_bc1_padded() {
-        let estimate = Format::Bc1.compressed_size(15, 30);
-        assert_eq!(estimate, 256);
+    fn test_bc1_decompression_gray() {
+        // BC1 data created with AMD Compressonator v4.1.5083
+        let encoded: [u8; 8] = [0x00, 0x00, 0xFF, 0xFF, 0x11, 0x68, 0x29, 0x44];
+        let mut output_actual = [0u8; 4 * 4 * 4];
+        Format::Bc1.decompress(&encoded, 4, 4, &mut output_actual);
+        assert_eq!(output_actual, decoded_block_gray_4x4_as_rgba());
     }
 
     #[test]
@@ -327,26 +404,84 @@ mod tests {
     }
 
     #[test]
-    fn test_storage_requirements_bc2_exact() {
-        let estimate = Format::Bc2.compressed_size(16, 32);
-        assert_eq!(estimate, 512);
+    fn test_bc1_compression_gray() {
+        fn test(algorithm: Algorithm) {
+            let mut output_actual = [0u8; 8];
+            Format::Bc1.compress(
+                &decoded_block_gray_4x4_as_rgba(),
+                4,
+                4,
+                Params {
+                    algorithm,
+                    weights: COLOUR_WEIGHTS_UNIFORM,
+                    weigh_colour_by_alpha: false,
+                },
+                &mut output_actual,
+            );
+            // BC1 data created with AMD Compressonator v4.1.5083
+            let output_expected = [0x00, 0x00, 0xFF, 0xFF, 0x11, 0x68, 0x29, 0x44];
+            assert_eq!(output_actual, output_expected);
+        }
+
+        // all algorithms should result in the same expected output
+        test(Algorithm::ClusterFit);
+        test(Algorithm::RangeFit);
+        test(Algorithm::IterativeClusterFit);
+    }
+
+    // A colour test-pattern (RGB) with the first row in one colour,
+    // the second in another and the third and last row in a third colour.
+    static DECODED_BLOCK_COLOUR_4X4: &[u8] = &[
+        255, 150, 74, 255, 150, 74, 255, 150, 74, 255, 150, 74, // row 0
+        255, 120, 52, 255, 120, 52, 255, 120, 52, 255, 120, 52, // row 1
+        255, 105, 41, 255, 105, 41, 255, 105, 41, 255, 105, 41, // row 2
+        255, 105, 41, 255, 105, 41, 255, 105, 41, 255, 105, 41, // row 3
+    ];
+
+    // BC1 data created with AMD Compressonator v4.1.5083 and is the same as libsquish
+    static ENCODED_BLOCK_COLOUR_4X4: [u8; 8] = [0xA9, 0xFC, 0x45, 0xFB, 0x00, 0xFF, 0x55, 0x55];
+
+    fn decoded_block_colour_4x4_as_rgba() -> [u8; 4 * 4 * 4] {
+        let mut output = [0u8; 4 * 4 * 4];
+        for i in 0..4 * 4 {
+            output[i * 4 + 0] = DECODED_BLOCK_COLOUR_4X4[i * 3 + 0]; // R
+            output[i * 4 + 1] = DECODED_BLOCK_COLOUR_4X4[i * 3 + 1]; // G
+            output[i * 4 + 2] = DECODED_BLOCK_COLOUR_4X4[i * 3 + 2]; // B
+            output[i * 4 + 3] = 0xFF; //A
+        }
+        output
     }
 
     #[test]
-    fn test_storage_requirements_bc2_padded() {
-        let estimate = Format::Bc2.compressed_size(15, 30);
-        assert_eq!(estimate, 512);
+    fn test_bc1_decompression_colour() {
+        let encoded: [u8; 8] = ENCODED_BLOCK_COLOUR_4X4;
+        let mut output_actual = [0u8; 4 * 4 * 4];
+        Format::Bc1.decompress(&encoded, 4, 4, &mut output_actual);
+        assert_eq!(output_actual, decoded_block_colour_4x4_as_rgba());
     }
 
     #[test]
-    fn test_storage_requirements_bc3_exact() {
-        let estimate = Format::Bc3.compressed_size(16, 32);
-        assert_eq!(estimate, 512);
-    }
+    fn test_bc1_compression_colour() {
+        fn test(algorithm: Algorithm) {
+            let mut output_actual = [0u8; 8];
+            Format::Bc1.compress(
+                &decoded_block_colour_4x4_as_rgba(),
+                4,
+                4,
+                Params {
+                    algorithm,
+                    weights: COLOUR_WEIGHTS_UNIFORM,
+                    weigh_colour_by_alpha: false,
+                },
+                &mut output_actual,
+            );
+            let output_expected = ENCODED_BLOCK_COLOUR_4X4;
+            assert_eq!(output_actual, output_expected);
+        }
 
-    #[test]
-    fn test_storage_requirements_bc3_padded() {
-        let estimate = Format::Bc3.compressed_size(15, 30);
-        assert_eq!(estimate, 512);
+        // all algorithms should result in the same expected output
+        test(Algorithm::ClusterFit);
+        test(Algorithm::RangeFit);
+        test(Algorithm::IterativeClusterFit);
     }
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Jan Solanti <jhs@psonet.com>
+// Copyright (c) 2018-2021 Jan Solanti <jhs@psonet.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -213,6 +213,8 @@ fn format_to_dxgiformat(f: Format) -> DxgiFormat {
         Format::Bc1 | Format::Bc1Gcn => DxgiFormat::BC1_UNorm_sRGB,
         Format::Bc2 => DxgiFormat::BC2_UNorm_sRGB,
         Format::Bc3 => DxgiFormat::BC3_UNorm_sRGB,
+        Format::Bc4 => DxgiFormat::BC4_UNorm,
+        Format::Bc5 => DxgiFormat::BC5_UNorm,
     }
 }
 
@@ -221,6 +223,8 @@ fn dxgiformat_to_format(d: DxgiFormat) -> Format {
         DxgiFormat::BC1_UNorm_sRGB => Format::Bc1,
         DxgiFormat::BC2_UNorm_sRGB => Format::Bc2,
         DxgiFormat::BC3_UNorm_sRGB => Format::Bc3,
+        DxgiFormat::BC4_UNorm => Format::Bc4,
+        DxgiFormat::BC5_UNorm => Format::Bc5,
         _ => panic!("Unsupported DXGI format!"),
     }
 }
@@ -240,6 +244,8 @@ fn parse_format(s: &str) -> Result<Format, &'static str> {
         "bc1gcn" => Ok(Format::Bc1Gcn),
         "bc2" => Ok(Format::Bc2),
         "bc3" => Ok(Format::Bc3),
+        "bc4" => Ok(Format::Bc4),
+        "bc5" => Ok(Format::Bc5),
         _ => Err("invalid compression format specifier")
     }
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2006 Simon Brown <si@sjbrown.co.uk>
-// Copyright (c) 2018-2019 Jan Solanti <jhs@psonet.com>
+// Copyright (c) 2018-2021 Jan Solanti <jhs@psonet.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -33,6 +33,7 @@ pub struct Sym3x3 {
     x: [f32; 6],
 }
 
+/// Symmetric eigensystem solver algorithm from http://www.geometrictools.com/Documentation/EigenSymmetric3x3.pdf
 impl Sym3x3 {
     pub fn new(s: f32) -> Self {
         Self {
@@ -75,8 +76,8 @@ impl Sym3x3 {
         const POWER_ITERATION_COUNT: usize = 8;
 
         let row0 = Vec4::new(self.x[0], self.x[1], self.x[2], 0.0);
-        let row1 = Vec4::new(self.x[0], self.x[1], self.x[2], 0.0);
-        let row2 = Vec4::new(self.x[0], self.x[1], self.x[2], 0.0);
+        let row1 = Vec4::new(self.x[1], self.x[3], self.x[4], 0.0);
+        let row2 = Vec4::new(self.x[2], self.x[4], self.x[5], 0.0);
         let mut v = Vec4::new(1.0, 1.0, 1.0, 1.0);
 
         for _ in 0..POWER_ITERATION_COUNT {
