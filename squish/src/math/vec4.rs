@@ -33,43 +33,43 @@ pub struct Vec4 {
 }
 
 impl Vec4 {
-    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
+    pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self { x, y, z, w }
     }
 
-    pub fn x(&self) -> f32 {
+    pub const fn x(&self) -> f32 {
         self.x
     }
 
-    pub fn y(&self) -> f32 {
+    pub const fn y(&self) -> f32 {
         self.y
     }
 
-    pub fn z(&self) -> f32 {
+    pub const fn z(&self) -> f32 {
         self.z
     }
 
-    pub fn w(&self) -> f32 {
+    pub const fn w(&self) -> f32 {
         self.w
     }
 
-    pub fn to_vec3(&self) -> Vec3 {
+    pub const fn to_vec3(&self) -> Vec3 {
         Vec3::new(self.x, self.y, self.z)
     }
 
-    pub fn splat_x(&self) -> Vec4 {
+    pub const fn splat_x(&self) -> Vec4 {
         Vec4::new(self.x, self.x, self.x, self.x)
     }
 
-    pub fn splat_y(&self) -> Vec4 {
+    pub const fn splat_y(&self) -> Vec4 {
         Vec4::new(self.y, self.y, self.y, self.y)
     }
 
-    pub fn splat_z(&self) -> Vec4 {
+    pub const fn splat_z(&self) -> Vec4 {
         Vec4::new(self.z, self.z, self.z, self.z)
     }
 
-    pub fn splat_w(&self) -> Vec4 {
+    pub const fn splat_w(&self) -> Vec4 {
         Vec4::new(self.w, self.w, self.w, self.w)
     }
 

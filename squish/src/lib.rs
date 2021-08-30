@@ -25,16 +25,17 @@
 
 #![no_std]
 
+#[cfg(feature="rayon")]
+use rayon::prelude::*;
+
+use crate::colourfit::{ClusterFit, ColourFit, RangeFit, SingleColourFit};
+use crate::colourset::ColourSet;
+
 mod alpha;
 mod colourblock;
 mod colourfit;
 mod colourset;
 mod math;
-
-use crate::colourfit::{ClusterFit, ColourFit, RangeFit, SingleColourFit};
-use crate::colourset::ColourSet;
-#[cfg(feature="rayon")]
-use rayon::prelude::*;
 
 /// Defines a compression format
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -77,6 +78,9 @@ pub const COLOUR_WEIGHTS_UNIFORM: ColourWeights = [1.0, 1.0, 1.0];
 
 /// Weights based on the perceived brightness of each colour channel
 pub const COLOUR_WEIGHTS_PERCEPTUAL: ColourWeights = [0.2126, 0.7152, 0.0722];
+
+/// Perceptual weights used for GCN/CMPR encoding
+pub const COLOUR_WEIGHTS_PERCEPTUAL_GCN: ColourWeights = [0.3086, 0.6094, 0.0820];
 
 #[derive(Clone, Copy)]
 pub struct Params {
@@ -199,7 +203,7 @@ impl Format {
     ) {
         // compress alpha block(s)
         match self {
-            Format::Bc1 => {},
+            Format::Bc1 | Format::Bc1Gcn => {},
             Format::Bc2 => alpha::compress_bc2(&rgba, mask, &mut output[..8]),
             Format::Bc3 => alpha::compress_bc3(&rgba, 3, mask, &mut output[..8]),
             Format::Bc4 => alpha::compress_bc3(&rgba, 0, mask, &mut output[..8]),
@@ -211,11 +215,11 @@ impl Format {
 
         // compress colour block if the format has one
         match self {
-            Format::Bc1 | Format::Bc2 | Format::Bc3 => {
+            Format::Bc1 | Format::Bc1Gcn | Format::Bc2 | Format::Bc3 => {
                 // create the minimal point set
                 let colours = ColourSet::new(&rgba, mask, self, params.weigh_colour_by_alpha);
 
-                let colour_offset = if self == Format::Bc1 { 0 } else { 8 };
+                let colour_offset = if self == Format::Bc1 || self == Format::Bc1Gcn { 0 } else { 8 };
                 let colour_block = &mut output[colour_offset..colour_offset + 8];
 
                 // compress with appropriate compression algorithm
@@ -246,9 +250,9 @@ impl Format {
         let mut rgba;
         // decompress colour block
         match self {
-            Format::Bc1 | Format::Bc2 | Format::Bc3 => {
+            Format::Bc1 | Format::Bc1Gcn | Format::Bc2 | Format::Bc3 => {
                 // get reference to the actual colour block
-                let colour_offset = if self == Format::Bc1 { 0 } else { 8 };
+                let colour_offset = if self == Format::Bc1 || self == Format::Bc1Gcn { 0 } else { 8 };
                 let colour_block = &block[colour_offset..colour_offset + 8];
 
                 // decompress colour block
@@ -261,7 +265,7 @@ impl Format {
 
         // decompress alpha block(s)
         match self {
-            Format::Bc1 => (),
+            Format::Bc1 | Format::Bc1Gcn => (),
             Format::Bc2 => alpha::decompress_bc2(&mut rgba, &block[..8]),
             Format::Bc3 => alpha::decompress_bc3(&mut rgba, 3, &block[..8]),
             Format::Bc4 => {
@@ -352,6 +356,8 @@ mod tests {
     fn test_storage_requirements() {
         assert_eq!(Format::Bc1.compressed_size(16, 32), 256);
         assert_eq!(Format::Bc1.compressed_size(15, 32), 256);
+        assert_eq!(Format::Bc1Gcn.compressed_size(16, 32), 256);
+        assert_eq!(Format::Bc1Gcn.compressed_size(15, 32), 256);
         assert_eq!(Format::Bc2.compressed_size(16, 32), 512);
         assert_eq!(Format::Bc2.compressed_size(15, 32), 512);
         assert_eq!(Format::Bc3.compressed_size(16, 32), 512);
@@ -392,18 +398,6 @@ mod tests {
     }
 
     #[test]
-    fn test_storage_requirements_bc1_gcn_exact() {
-        let estimate = Format::Bc1Gcn.compressed_size(16, 32);
-        assert_eq!(estimate, 256);
-    }
-
-    #[test]
-    fn test_storage_requirements_bc1_gcn_padded() {
-        let estimate = Format::Bc1Gcn.compressed_size(15, 30);
-        assert_eq!(estimate, 256);
-    }
-
-    #[test]
     fn test_bc1_compression_gray() {
         fn test(algorithm: Algorithm) {
             let mut output_actual = [0u8; 8];
@@ -431,23 +425,30 @@ mod tests {
 
     // A colour test-pattern (RGB) with the first row in one colour,
     // the second in another and the third and last row in a third colour.
-    static DECODED_BLOCK_COLOUR_4X4: &[u8] = &[
+    static DECODED_BLOCK_COLOUR_4X4: [u8; 4 * 4 * 3] = [
         255, 150, 74, 255, 150, 74, 255, 150, 74, 255, 150, 74, // row 0
         255, 120, 52, 255, 120, 52, 255, 120, 52, 255, 120, 52, // row 1
+        255, 105, 41, 255, 105, 41, 255, 105, 41, 255, 105, 41, // row 2
+        255, 105, 41, 255, 105, 41, 255, 105, 41, 255, 105, 41, // row 3
+    ];
+    static DECODED_BLOCK_COLOUR_4X4_GCN: [u8; 4 * 4 * 3] = [
+        255, 150, 74, 255, 150, 74, 255, 150, 74, 255, 150, 74, // row 0
+        255, 121, 53, 255, 121, 53, 255, 121, 53, 255, 121, 53, // row 1
         255, 105, 41, 255, 105, 41, 255, 105, 41, 255, 105, 41, // row 2
         255, 105, 41, 255, 105, 41, 255, 105, 41, 255, 105, 41, // row 3
     ];
 
     // BC1 data created with AMD Compressonator v4.1.5083 and is the same as libsquish
     static ENCODED_BLOCK_COLOUR_4X4: [u8; 8] = [0xA9, 0xFC, 0x45, 0xFB, 0x00, 0xFF, 0x55, 0x55];
+    static ENCODED_BLOCK_COLOUR_4X4_GCN: [u8; 8] = [0xFC, 0xA9, 0xFB, 0x45, 0x00, 0xFF, 0x55, 0x55];
 
-    fn decoded_block_colour_4x4_as_rgba() -> [u8; 4 * 4 * 4] {
+    fn rgb_to_rgba(block: &[u8; 4 * 4 * 3]) -> [u8; 4 * 4 * 4] {
         let mut output = [0u8; 4 * 4 * 4];
         for i in 0..4 * 4 {
-            output[i * 4 + 0] = DECODED_BLOCK_COLOUR_4X4[i * 3 + 0]; // R
-            output[i * 4 + 1] = DECODED_BLOCK_COLOUR_4X4[i * 3 + 1]; // G
-            output[i * 4 + 2] = DECODED_BLOCK_COLOUR_4X4[i * 3 + 2]; // B
-            output[i * 4 + 3] = 0xFF; //A
+            output[i * 4 + 0] = block[i * 3 + 0]; // R
+            output[i * 4 + 1] = block[i * 3 + 1]; // G
+            output[i * 4 + 2] = block[i * 3 + 2]; // B
+            output[i * 4 + 3] = 0xFF; // A
         }
         output
     }
@@ -457,7 +458,7 @@ mod tests {
         let encoded: [u8; 8] = ENCODED_BLOCK_COLOUR_4X4;
         let mut output_actual = [0u8; 4 * 4 * 4];
         Format::Bc1.decompress(&encoded, 4, 4, &mut output_actual);
-        assert_eq!(output_actual, decoded_block_colour_4x4_as_rgba());
+        assert_eq!(output_actual, rgb_to_rgba(&DECODED_BLOCK_COLOUR_4X4));
     }
 
     #[test]
@@ -465,7 +466,7 @@ mod tests {
         fn test(algorithm: Algorithm) {
             let mut output_actual = [0u8; 8];
             Format::Bc1.compress(
-                &decoded_block_colour_4x4_as_rgba(),
+                &rgb_to_rgba(&DECODED_BLOCK_COLOUR_4X4),
                 4,
                 4,
                 Params {
@@ -483,5 +484,36 @@ mod tests {
         test(Algorithm::ClusterFit);
         test(Algorithm::RangeFit);
         test(Algorithm::IterativeClusterFit);
+    }
+
+    #[test]
+    fn test_bc1gcn_decompression_colour() {
+        let encoded: [u8; 8] = ENCODED_BLOCK_COLOUR_4X4_GCN;
+        let mut output_actual = [0u8; 4 * 4 * 4];
+        Format::Bc1Gcn.decompress(&encoded, 4, 4, &mut output_actual);
+        assert_eq!(output_actual, rgb_to_rgba(&DECODED_BLOCK_COLOUR_4X4_GCN));
+    }
+
+    #[test]
+    fn test_bc1gcn_compression_colour() {
+        fn test(algorithm: Algorithm) {
+            let mut output_actual = [0u8; 8];
+            Format::Bc1Gcn.compress(
+                &rgb_to_rgba(&DECODED_BLOCK_COLOUR_4X4_GCN),
+                4,
+                4,
+                Params {
+                    algorithm,
+                    weights: COLOUR_WEIGHTS_UNIFORM,
+                    weigh_colour_by_alpha: false,
+                },
+                &mut output_actual,
+            );
+            let output_expected = ENCODED_BLOCK_COLOUR_4X4_GCN;
+            assert_eq!(output_actual, output_expected);
+        }
+
+        // only RangeFit implemented for GCN
+        test(Algorithm::RangeFit);
     }
 }

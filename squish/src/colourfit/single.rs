@@ -20,8 +20,6 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use core::u32;
-
 use crate::colourblock;
 use crate::colourset::ColourSet;
 use crate::math::{f32_to_i32_clamped, Vec3};

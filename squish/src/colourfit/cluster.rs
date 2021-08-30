@@ -151,17 +151,17 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
 
     fn compress3(&mut self) {
         let count = self.colourset.count();
-        let two = Vec4::new(2.0, 2.0, 2.0, 2.0);
-        let one = Vec4::new(1.0, 1.0, 1.0, 1.0);
-        let half_half2 = Vec4::new(0.5, 0.5, 0.5, 0.25);
-        let zero = Vec4::new(0.0, 0.0, 0.0, 0.0);
-        let half = Vec4::new(0.5, 0.5, 0.5, 0.5);
-        let grid = Vec4::new(31.0, 63.0, 31.0, 0.0);
-        let gridrcp = Vec4::new(1.0 / 31.0, 1.0 / 63.0, 1.0 / 31.0, 0.0);
+        const TWO: Vec4 = Vec4::new(2.0, 2.0, 2.0, 2.0);
+        const ONE: Vec4 = Vec4::new(1.0, 1.0, 1.0, 1.0);
+        const HALF_HALF2: Vec4 = Vec4::new(0.5, 0.5, 0.5, 0.25);
+        const ZERO: Vec4 = Vec4::new(0.0, 0.0, 0.0, 0.0);
+        const HALF: Vec4 = Vec4::new(0.5, 0.5, 0.5, 0.5);
+        const GRID: Vec4 = Vec4::new(31.0, 63.0, 31.0, 0.0);
+        const GRID_RCP: Vec4 = Vec4::new(1.0 / 31.0, 1.0 / 63.0, 1.0 / 31.0, 0.0);
 
         // check all possible clusters and iterate on the total order
-        let mut best_start = zero;
-        let mut best_end = zero;
+        let mut best_start = ZERO;
+        let mut best_end = ZERO;
         let mut best_error = self.best_error;
         let mut best_indices = [0u8; 16];
         let mut best_iteration = 0;
@@ -178,11 +178,11 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
             }
 
             // first cluster [0,i) is at the start
-            let mut part0 = zero;
+            let mut part0 = ZERO;
             for i in 0..count {
                 // second cluster [i,j) is halfway along
                 let mut part1 =
-                    if i == 0 { self.points_weights[0] } else { zero };
+                    if i == 0 { self.points_weights[0] } else { ZERO };
                 let jmin = if i == 0 { 1 } else { i };
 
                 for j in jmin..=count {
@@ -190,13 +190,13 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
                     let part2 = self.xsum_wsum - part1 - part0;
 
                     // compute least squares term directly
-                    let alphax_sum = part1 * half_half2 + part0;
+                    let alphax_sum = part1 * HALF_HALF2 + part0;
                     let alpha2_sum = alphax_sum.splat_w();
 
-                    let betax_sum = part1 * half_half2 + part2;
+                    let betax_sum = part1 * HALF_HALF2 + part2;
                     let beta2_sum = betax_sum.splat_w();
 
-                    let alphabeta_sum = (part1 * half_half2).splat_w();
+                    let alphabeta_sum = (part1 * HALF_HALF2).splat_w();
 
                     // compute the least-squares optimal points
                     let factor =
@@ -205,16 +205,16 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
                     let b = ((betax_sum * alpha2_sum) - alphax_sum * alphabeta_sum) * factor;
 
                     // clamp to the grid
-                    let a = one.min(zero.max(a));
-                    let b = one.min(zero.max(b));
-                    let a = (grid * a + half).truncate() * gridrcp;
-                    let b = (grid * b + half).truncate() * gridrcp;
+                    let a = ONE.min(ZERO.max(a));
+                    let b = ONE.min(ZERO.max(b));
+                    let a = (GRID * a + HALF).truncate() * GRID_RCP;
+                    let b = (GRID * b + HALF).truncate() * GRID_RCP;
 
                     // compute the error (we skip the constant xxsum)
                     let e1 = (a * a) * alpha2_sum + (b * b * beta2_sum);
                     let e2 = (a * b * alphabeta_sum) - a * alphax_sum;
                     let e3 = e2 - b * betax_sum;
-                    let e4 = two * e3 + e1;
+                    let e4 = TWO * e3 + e1;
 
                     // apply the channel weights to the error term
                     let e5 = e4 * self.weights;
@@ -276,19 +276,19 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
 
     fn compress4(&mut self) {
         let count = self.colourset.count();
-        let two = Vec4::new(2.0, 2.0, 2.0, 2.0);
-        let one = Vec4::new(1.0, 1.0, 1.0, 1.0);
-        let onethird_onethird2 = Vec4::new(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 9.0);
-        let twothirds_twothirds2 = Vec4::new(2.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0, 4.0 / 9.0);
-        let twoninths = Vec4::new(2.0 / 9.0, 2.0 / 9.0, 2.0 / 9.0, 2.0 / 9.0);
-        let zero = Vec4::new(0.0, 0.0, 0.0, 0.0);
-        let half = Vec4::new(0.5, 0.5, 0.5, 0.5);
-        let grid = Vec4::new(31.0, 63.0, 31.0, 0.0);
-        let gridrcp = Vec4::new(1.0 / 31.0, 1.0 / 63.0, 1.0 / 31.0, 0.0);
+        const TWO: Vec4 = Vec4::new(2.0, 2.0, 2.0, 2.0);
+        const ONE: Vec4 = Vec4::new(1.0, 1.0, 1.0, 1.0);
+        const ONETHIRD_ONETHIRD2: Vec4 = Vec4::new(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 9.0);
+        const TWOTHIRDS_TWOTHIRDS2: Vec4 = Vec4::new(2.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0, 4.0 / 9.0);
+        const TWONINTHS: Vec4 = Vec4::new(2.0 / 9.0, 2.0 / 9.0, 2.0 / 9.0, 2.0 / 9.0);
+        const ZERO: Vec4 = Vec4::new(0.0, 0.0, 0.0, 0.0);
+        const HALF: Vec4 = Vec4::new(0.5, 0.5, 0.5, 0.5);
+        const GRID: Vec4 = Vec4::new(31.0, 63.0, 31.0, 0.0);
+        const GRID_RCP: Vec4 = Vec4::new(1.0 / 31.0, 1.0 / 63.0, 1.0 / 31.0, 0.0);
 
         // check all possible clusters and iterate on the total order
-        let mut best_start = zero;
-        let mut best_end = zero;
+        let mut best_start = ZERO;
+        let mut best_end = ZERO;
         let mut best_error = self.best_error;
         let mut best_indices = [0u8; 16];
         let mut best_iteration = 0;
@@ -306,17 +306,17 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
             }
 
             // first cluster [0,i) is at the start
-            let mut part0 = zero;
+            let mut part0 = ZERO;
             for i in 0..count {
                 // second cluster [i,j) is one third along
-                let mut part1 = zero;
+                let mut part1 = ZERO;
 
                 for j in i..=count {
                     // third cluster [j, k) is two thirds along
                     let mut part2 = if j == 0 {
                         self.points_weights[0]
                     } else {
-                        zero
+                        ZERO
                     };
                     let kmin = if j == 0 { 1 } else { j };
 
@@ -326,14 +326,14 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
 
                         // compute least squares terms directly
                         let alphax_sum =
-                            part2 * onethird_onethird2 + (part1 * twothirds_twothirds2 + part0);
+                            part2 * ONETHIRD_ONETHIRD2 + (part1 * TWOTHIRDS_TWOTHIRDS2 + part0);
                         let alpha2_sum = alphax_sum.splat_w();
 
                         let betax_sum =
-                            part1 * onethird_onethird2 + (part2 * twothirds_twothirds2 + part3);
+                            part1 * ONETHIRD_ONETHIRD2 + (part2 * TWOTHIRDS_TWOTHIRDS2 + part3);
                         let beta2_sum = betax_sum.splat_w();
 
-                        let alphabeta_sum = twoninths * (part1 + part2).splat_w();
+                        let alphabeta_sum = TWONINTHS * (part1 + part2).splat_w();
 
                         // compute the least-squares optimal points
                         let factor =
@@ -342,16 +342,16 @@ impl<'a> ColourFitImpl<'a> for ClusterFit<'a> {
                         let b = ((betax_sum * alpha2_sum) - alphax_sum * alphabeta_sum) * factor;
 
                         // clamp to the grid
-                        let a = one.min(zero.max(a));
-                        let b = one.min(zero.max(b));
-                        let a = (grid * a + half).truncate() * gridrcp;
-                        let b = (grid * b + half).truncate() * gridrcp;
+                        let a = ONE.min(ZERO.max(a));
+                        let b = ONE.min(ZERO.max(b));
+                        let a = (GRID * a + HALF).truncate() * GRID_RCP;
+                        let b = (GRID * b + HALF).truncate() * GRID_RCP;
 
                         // compute the error (we skip the constant xxsum)
                         let e1 = (a * a) * alpha2_sum + (b * b * beta2_sum);
                         let e2 = (a * b * alphabeta_sum) - a * alphax_sum;
                         let e3 = e2 - b * betax_sum;
-                        let e4 = two * e3 + e1;
+                        let e4 = TWO * e3 + e1;
 
                         // apply the channel weights to the error term
                         let e5 = e4 * self.weights;

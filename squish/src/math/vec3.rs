@@ -32,19 +32,19 @@ pub struct Vec3 {
 }
 
 impl Vec3 {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
+    pub const fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
 
-    pub fn x(&self) -> f32 {
+    pub const fn x(&self) -> f32 {
         self.x
     }
 
-    pub fn y(&self) -> f32 {
+    pub const fn y(&self) -> f32 {
         self.y
     }
 
-    pub fn z(&self) -> f32 {
+    pub const fn z(&self) -> f32 {
         self.z
     }
 

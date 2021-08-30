@@ -20,12 +20,10 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use core::f32;
-
+use crate::{ColourWeights, Format};
 use crate::colourblock;
 use crate::colourset::ColourSet;
 use crate::math::{Sym3x3, Vec3};
-use crate::{ColourWeights, Format};
 
 use super::ColourFitImpl;
 
@@ -174,11 +172,13 @@ impl<'a> ColourFitImpl<'a> for RangeFit<'a> {
 
     fn compress4(&mut self) {
         // create a codebook
+        let one_third = if self.format == Format::Bc1Gcn { 3.0 / 8.0 } else { 1.0 / 3.0 };
+        let two_thirds = if self.format == Format::Bc1Gcn { 5.0 / 8.0 } else { 2.0 / 3.0 };
         let codes = [
             self.start,
             self.end,
-            self.start * (2.0 / 3.0) + self.end * (1.0 / 3.0),
-            self.start * (1.0 / 3.0) + self.end * (2.0 / 3.0),
+            self.start * two_thirds + self.end * one_third,
+            self.start * one_third + self.end * two_thirds,
         ];
 
         if self.compression_helper(&codes) {

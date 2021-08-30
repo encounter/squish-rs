@@ -20,7 +20,7 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use core::{mem, u8};
+use core::mem;
 
 use crate::Format;
 use crate::math::{f32_to_i32_clamped, Vec3};
@@ -110,7 +110,7 @@ pub fn write4(start: &Vec3, end: &Vec3, indices: &[u8; 16], block: &mut [u8], fo
 
 /// Convert a little endian 565-packed colour to 8bpc RGBA
 fn unpack_565(packed: &[u8], format: Format) -> [u8; 4] {
-    assert!(packed.len() == 2);
+    assert_eq!(packed.len(), 2);
     // get components
     let mut tmp = [0u8; 2];
     tmp.copy_from_slice(&packed[0..2]);
@@ -133,7 +133,7 @@ fn unpack_565(packed: &[u8], format: Format) -> [u8; 4] {
 
 /// Decompress a BC1/2/3 block to 4x4 RGBA pixels
 pub fn decompress(bytes: &[u8], format: Format) -> [[u8; 4]; 16] {
-    assert!(bytes.len() == 8);
+    assert_eq!(bytes.len(), 8);
 
     let is_gcn = format == Format::Bc1Gcn;
     let is_bc1 = format == Format::Bc1 || is_gcn;
